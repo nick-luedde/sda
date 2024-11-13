@@ -1,4 +1,3 @@
-"use strict";
 /**
  * Class for handling data access to app data google sheet
  * Expects each collection to have an id property that is treated as the unique identifier for that record
