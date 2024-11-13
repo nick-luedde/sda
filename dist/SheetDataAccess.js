@@ -627,7 +627,6 @@ class SheetDataCollection {
             wipe();
             return api;
         };
-        //TODO: pick up here
         const api = {
             sheet,
             rowCount,
