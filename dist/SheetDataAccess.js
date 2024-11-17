@@ -1,3 +1,4 @@
+"use strict";
 /**
  * Class for handling data access to app data google sheet
  * Expects each collection to have an id property that is treated as the unique identifier for that record
@@ -25,21 +26,21 @@ class SheetDataAccess {
      * @param {any} [options.schema] - optional Schema to apply to the datasource objects
      * @param {any} [options.models] - optional schema models to apply to the datasource objects
      */
-    static create({ id, ss }, { schema, models } = {}) {
-        //@ts-ignore
+    static create({ id, ss }, { schemas } = {}) {
         const spreadsheet = ss || SpreadsheetApp.openById(id);
-        if (!schema !== !models)
-            throw new Error('Missing schema or data models!');
         const collections = {};
+        const hasSchema = !!schemas;
         const sheets = spreadsheet.getSheets();
         sheets.forEach(sheet => {
-            const name = sheet.getName();
-            if (name[0] !== '_') {
-                const model = !!models ? models[name] : null;
-                if (!model && !!models)
-                    throw new Error(`${name} has no schema model provided!`);
-                //@ts-ignore
-                collections[name] = SheetDataCollection.create(sheet, { schema, model });
+            const sheetName = sheet.getName();
+            if (String(sheetName)[0] !== '_') {
+                let schema;
+                if (hasSchema) {
+                    schema = schemas[sheetName];
+                    if (!schema)
+                        throw new Error(`${String(sheetName)} has no schema model provided!`);
+                }
+                collections[sheetName] = SheetDataCollection.create(sheet, { schema });
             }
         });
         /**
@@ -102,7 +103,7 @@ class SheetDataAccess {
     }
     /**
      * maps an array of data to an object with headers of the row as property keys
-     * @param {T[]} row - row of data to map to object
+     * @param {any[]} row - row of data to map to object
      * @param {number} index - index of the object within the data array
      * @param {string[]} headers - array of header names in the order of appearance in sheet
      */
@@ -120,7 +121,7 @@ class SheetDataAccess {
  */
 class SheetDataCollection {
     /**
-     * @param {any} sheet - sheet for the collection of data
+     * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet - sheet for the collection of data
      * @param {object} [options] - collections options
      * @param {any} [options.schema] - schema to apply to the collection
      * @param {object} [options.model] - schema model to apply to the collection
@@ -176,12 +177,16 @@ class SheetDataCollection {
          * @param {T[]} records - records to get saveable array
          * @returns {T[]} new array of shallow copied/schema applied records
          */
-        const getRecordsToSave = (records, { ignoreErrors } = {}) => records.map(record => hasModel ? schema.apply(record, model, { isNew: !record._key, ignoreErrors }) : { ...record });
+        const getRecordsToSave = (records, { ignoreErrors } = {}) => !hasModel
+            ? records.map(rec => ({ ...rec }))
+            : records.map((rec) => schema.exec(rec, { isNew: !rec._key, throwError: !ignoreErrors }));
         /**
          * Gets records from schema or shallow copies if none
          * @param {T[]} records - records to get from schema
          */
-        const getFromSchemaRecords = (records) => records.map(record => hasModel ? schema.from(record, model) : { ...record });
+        const getFromSchemaRecords = (records) => !hasModel
+            ? records.map(rec => ({ ...rec }))
+            : records.map(schema.parse);
         /**
          * Helper function that will replace the top row of a sheet with headers from the provided obj
          * @param {T} obj - object with headers to write
@@ -350,12 +355,12 @@ class SheetDataCollection {
         };
         /**
          * Updates a range in the sheet datasource with the record data
-         * @param {Object} record - record object
+         * @param {T} record - record object
          * @param {Array} recordValues - record array values
          * @param {Number} columnCount - number of columns in range
          */
         const updateRow = (record, recordValues, columnCount) => {
-            const range = sheet.getRange(record._key, 1, 1, columnCount);
+            const range = sheet.getRange(Number(record._key), 1, 1, columnCount);
             //last second check to make sure 2d array and sheet are still in sync for this object
             if (String(range.getValues()[0][0]) !== String(recordValues[0]))
                 throw new Error(`Id at row ${record._key} does not match id of object for ${recordValues[0]}`);
@@ -363,12 +368,10 @@ class SheetDataCollection {
         };
         /**
          * Upserts one record (more concurrent safe)
-         * @param {object} record - record to upsert
+         * @param {T} record - record to upsert
          * @param {{ bypassSchema: boolean }} [options] - options
          */
         const upsertOne = (record, { bypassSchema = false } = {}) => {
-            if (!record)
-                return null;
             const isNew = record._key === undefined || record._key === null;
             const [saved] = isNew ? [addOne(record, { bypassSchema })] : update([record], { bypassSchema });
             return saved;
@@ -393,12 +396,9 @@ class SheetDataCollection {
         };
         /**
          * Adds one record (safer than adding accross a range for collision)
-         * @param {Object} record - record to add
+         * @param {T} record - record to add
          */
         const addOne = (record, { bypassSchema = false } = {}) => {
-            //saves record data objects to the spreadsheet
-            if (!record)
-                return null;
             init();
             const recordToSave = !bypassSchema
                 ? getRecordsToSave([record])[0]
@@ -464,14 +464,14 @@ class SheetDataCollection {
          * Patches the provided patch props onto existing models
          * (allows for targeted updates, which could help with multi-users so that entire records arent saved, just the individual changes are applied)
          * @param {T[]} patches - list of patches to apply
-         * @param {Object} options
+         * @param {SheetDataAccessBypassOption} options
          */
         const patch = (patches, { bypassSchema = false } = {}) => {
             if (patches.length === 0)
                 return [];
             init();
             const patchedRecords = patches.map(patch => {
-                const existing = find(patch._key);
+                const existing = find(String(patch._key || -1));
                 if (!existing)
                     throw new Error(`Could not patch record with key ${patch._key}. Key not found!`);
                 return {
@@ -489,7 +489,7 @@ class SheetDataCollection {
             // find each record to remove...
             records.forEach(record => {
                 const recordValues = cache.headerRow.map(header => record[header]);
-                const range = sheet.getRange(record._key, 1, 1, context.COLUMN_COUNT);
+                const range = sheet.getRange(Number(record._key), 1, 1, context.COLUMN_COUNT);
                 //last second check to make sure 2d array and sheet are still in sync for this object
                 if (String(range.getValues()[0][0]) !== String(recordValues[0]))
                     throw new Error(`Id at row ${record._key} does not match id of object for ${recordValues[0]}`);
@@ -564,7 +564,7 @@ class SheetDataCollection {
         const sort = (column, asc) => {
             init();
             const headers = headerRow();
-            const index = headers.findIndex(column);
+            const index = headers.indexOf(column);
             if (index !== -1) {
                 sheet.sort(index + 1, !!asc);
                 clearCached();
