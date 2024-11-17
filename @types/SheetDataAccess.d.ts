@@ -1,13 +1,23 @@
 type ISheetDataAccessObject = { _key: string | number, id?: string };
 type SheetDataAccessIndexCache<T> = { [key in keyof T]?: { [key: string]: T } };
 type SheetDataAccessRelatedCache<T> = { [key in keyof T]?: { [key: string]: T[] } };
+type SheetDataAccessCreateArgs = {
+  id: string;
+  ss: GoogleAppsScript.Spreadsheet.Spreadsheet
+};
+type SheetDataAccessCreateOptions<M> = {
+  schemas?: { [key in keyof M]: any };
+};
+type SheetDataAccessBypassOption = {
+  bypassSchema?: boolean;
+}
 
-interface ISheetDataAccess {
-  spreadsheet: any;
-  // collection: { [key: string]<Type>: SheetDataCollection<Type> };
-  defrag: () => ISheetDataAccess;
-  wipe: () => ISheetDataAccess;
-  archive: (folderId: string) => ISheetDataAccess;
+interface ISheetDataAccess<M> {
+  spreadsheet: GoogleAppsScript.Spreadsheet.Spreadsheet;
+  collections: { [key in keyof M]: ISheetDataCollection<M[key]> };
+  defrag: () => ISheetDataAccess<M>;
+  wipe: () => ISheetDataAccess<M>;
+  archive: (folderId: string) => ISheetDataAccess<M>;
   inspect: () => {
     summary: {
       totalColumns: number;
@@ -26,7 +36,7 @@ interface ISheetDataAccess {
 }
 
 interface ISheetDataCollection<Type> {
-  sheet: any;
+  sheet: GoogleAppsScript.Spreadsheet.Sheet;
   pk: (index: number) => ISheetDataCollection<Type>;
   rowCount: () => number;
   clearCached: () => ISheetDataCollection<Type>;
@@ -44,9 +54,9 @@ interface ISheetDataCollection<Type> {
   add: (records: Type[], options: { bypassSchema: boolean }) => Type[];
   addOne: (record: Type, options: { bypassSchema: boolean }) => Type;
   update: (records: Type[], options: { bypassSchema: boolean }) => Type[];
-  patch: (patches: Partial<Type>, options: { bypassSchema: boolean }) => Type[];
-  delete: (records: Partial<Type>) => void;
-  batch: (patches: Partial<Type>, options: { bypassSchema: boolean }) => Type[];
+  patch: (patches: Partial<Type>[], options: { bypassSchema: boolean }) => Type[];
+  delete: (records: Partial<Type>[]) => void;
+  batch: (patches: Type[], options: { bypassSchema: boolean }) => Type[];
   preflight: (records: Type[]) => {
     addOne: () => Type;
     add: () => Type[];
@@ -60,7 +70,7 @@ interface ISheetDataCollection<Type> {
   wipe: (rows?: number) => ISheetDataCollection<Type>;
   defrag: () => ISheetDataCollection<Type>
   archive: (id: string) => ISheetDataCollection<Type>;
-  fts: (find: { q?: string, regex?: boolean, matchCell?: boolean, matchCase?: boolean }) => Type[];
+  fts: (find: { q: string, regex?: boolean, matchCell?: boolean, matchCase?: boolean }) => Type[];
   sort: (column: keyof Type, asc?: boolean) => ISheetDataCollection<Type>;
   inspect: () => {
     name: string;

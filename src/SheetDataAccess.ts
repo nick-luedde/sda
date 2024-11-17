@@ -28,25 +28,26 @@ class SheetDataAccess {
    * @param {any} [options.schema] - optional Schema to apply to the datasource objects
    * @param {any} [options.models] - optional schema models to apply to the datasource objects
    */
-  static create<Models extends { [key: string]: any }>({ id, ss }, { schema, models }: { schema?: any, models?: any } = {}): ISheetDataAccess {
-    //@ts-ignore
+  static create<Models extends { [key: string]: any }>({ id, ss }: SheetDataAccessCreateArgs, { schemas }: SheetDataAccessCreateOptions<Models> = {}): ISheetDataAccess<Models> {
     const spreadsheet = ss || SpreadsheetApp.openById(id);
-
-    if (!schema !== !models)
-      throw new Error('Missing schema or data models!');
 
     const collections: { [K in keyof Models]: ISheetDataCollection<Models[K]> } = {} as { [K in keyof Models]: ISheetDataCollection<Models[K]> };
 
+    const hasSchema = !!schemas;
+
     const sheets = spreadsheet.getSheets();
     sheets.forEach(sheet => {
-      const name = sheet.getName();
-      if (name[0] !== '_') {
-        const model = !!models ? models[name] : null;
-        if (!model && !!models)
-          throw new Error(`${name} has no schema model provided!`);
+      const sheetName = sheet.getName() as keyof Models;
 
-        //@ts-ignore
-        collections[name] = SheetDataCollection.create(sheet, { schema, model });
+      if (String(sheetName)[0] !== '_') {
+        let schema;
+        if (hasSchema) {
+          schema = schemas[sheetName];
+          if (!schema)
+            throw new Error(`${String(sheetName)} has no schema model provided!`);
+        }
+
+        collections[sheetName] = SheetDataCollection.create(sheet, { schema });
       }
     });
 
@@ -122,14 +123,14 @@ class SheetDataAccess {
 
   /**
    * maps an array of data to an object with headers of the row as property keys
-   * @param {T[]} row - row of data to map to object
+   * @param {any[]} row - row of data to map to object
    * @param {number} index - index of the object within the data array
    * @param {string[]} headers - array of header names in the order of appearance in sheet
    */
-  static getRowAsObject<T>(row: T, index: number, headers: string[]) {
+  static getRowAsObject<T>(row: any[], index: number, headers: (keyof T)[]) {
     const obj = {
       _key: index + SheetDataAccess.ROW_INDEX_OFFSET
-    };
+    } as T;
 
     headers.forEach((header, index) => obj[header] = row[index]);
     return obj;
@@ -143,18 +144,18 @@ class SheetDataAccess {
 class SheetDataCollection {
 
   /**
-   * @param {any} sheet - sheet for the collection of data
+   * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet - sheet for the collection of data
    * @param {object} [options] - collections options
    * @param {any} [options.schema] - schema to apply to the collection 
    * @param {object} [options.model] - schema model to apply to the collection 
    */
-  static create<T extends ISheetDataAccessObject>(sheet, { schema, model }: { schema?: any, model?: any } = {}): ISheetDataCollection<T> {
+  static create<T extends ISheetDataAccessObject>(sheet: GoogleAppsScript.Spreadsheet.Sheet, { schema, model }: { schema?: any, model?: any } = {}): ISheetDataCollection<T> {
     const hasModel = !!model;
 
     const context: {
-      COLUMN_COUNT: number,
-      ROW_COUNT: number,
-      pkColumnIndex: number,
+      COLUMN_COUNT: number;
+      ROW_COUNT: number;
+      pkColumnIndex: number;
     } = {
       COLUMN_COUNT: 0,
       ROW_COUNT: 0,
@@ -162,10 +163,10 @@ class SheetDataCollection {
     };
 
     const cache: {
-      data: null | T[],
-      index: SheetDataAccessIndexCache<T>,
-      related: SheetDataAccessRelatedCache<T>,
-      headerRow: string[]
+      data: null | T[];
+      index: SheetDataAccessIndexCache<T>;
+      related: SheetDataAccessRelatedCache<T>;
+      headerRow: (keyof T)[];
     } = {
       data: null,
       index: {},
@@ -218,18 +219,19 @@ class SheetDataCollection {
      * @param {T[]} records - records to get saveable array
      * @returns {T[]} new array of shallow copied/schema applied records
      */
-    const getRecordsToSave = (records, { ignoreErrors }: { ignoreErrors?: boolean } = {}) =>
-      records.map(record =>
-        hasModel ? schema.apply(record, model, { isNew: !record._key, ignoreErrors }) : { ...record }
-      );
+    const getRecordsToSave = (records: T[], { ignoreErrors }: { ignoreErrors?: boolean } = {}) =>
+      !hasModel
+        ? records.map(rec => ({ ...rec }))
+        : records.map((rec) => schema.exec(rec, { isNew: !rec._key, throwError: !ignoreErrors }));
 
     /**
      * Gets records from schema or shallow copies if none
      * @param {T[]} records - records to get from schema 
      */
-    const getFromSchemaRecords = (records) => records.map(record =>
-      hasModel ? schema.from(record, model) : { ...record }
-    );
+    const getFromSchemaRecords = (records: T[]): T[] =>
+      !hasModel
+        ? records.map(rec => ({ ...rec }))
+        : records.map(schema.parse);
 
     /**
      * Helper function that will replace the top row of a sheet with headers from the provided obj
@@ -375,7 +377,7 @@ class SheetDataCollection {
      * @param {string} key - key of record to get
      * @param {keyof T} [idx] - optional index to use, defaults to '_key'
      */
-    const find = (key, idx: keyof T = '_key') => index(idx)[key];
+    const find = (key: string, idx: keyof T = '_key') => index(idx)[key];
 
     /**
      * Gets a row by key (row number)
@@ -398,7 +400,7 @@ class SheetDataCollection {
      * @param {any} val 
      * @param {keyof T} key 
      */
-    const lookup = (val, key: keyof T = 'id') => {
+    const lookup = (val: any, key: keyof T = 'id') => {
       if (data !== null) {
         return find(val, key);
       } else {
@@ -410,7 +412,7 @@ class SheetDataCollection {
      * Performs full text search
      * @param {object} find - options
      */
-    const fts = ({ q, regex, matchCell, matchCase }: { q?: string, regex?: boolean, matchCell?: boolean, matchCase?: boolean }) => {
+    const fts = ({ q, regex, matchCell, matchCase }: { q: string, regex?: boolean, matchCell?: boolean, matchCase?: boolean }) => {
       init();
 
       const finder = sheet.createTextFinder(q);
@@ -430,12 +432,12 @@ class SheetDataCollection {
 
     /**
      * Updates a range in the sheet datasource with the record data
-     * @param {Object} record - record object
+     * @param {T} record - record object
      * @param {Array} recordValues - record array values
      * @param {Number} columnCount - number of columns in range
      */
-    const updateRow = (record, recordValues, columnCount) => {
-      const range = sheet.getRange(record._key, 1, 1, columnCount);
+    const updateRow = (record: T, recordValues: any[], columnCount: number) => {
+      const range = sheet.getRange(Number(record._key), 1, 1, columnCount);
 
       //last second check to make sure 2d array and sheet are still in sync for this object
       if (String(range.getValues()[0][0]) !== String(recordValues[0]))
@@ -446,16 +448,13 @@ class SheetDataCollection {
 
     /**
      * Upserts one record (more concurrent safe)
-     * @param {object} record - record to upsert
+     * @param {T} record - record to upsert
      * @param {{ bypassSchema: boolean }} [options] - options
      */
-    const upsertOne = (record, { bypassSchema = false } = {}) => {
-      if (!record)
-        return null;
-
+    const upsertOne = (record: T, { bypassSchema = false }: SheetDataAccessBypassOption = {}): T => {
       const isNew = record._key === undefined || record._key === null;
       const [saved] = isNew ? [addOne(record, { bypassSchema })] : update([record], { bypassSchema });
-      return saved;
+      return saved as T;
     };
 
     /**
@@ -463,7 +462,7 @@ class SheetDataCollection {
      * @param {T[]} records - record objects to save
      * @returns {T[]} records in their saved state
      */
-    const upsert = (records, { bypassSchema = false } = {}) => {
+    const upsert = (records: T[], { bypassSchema = false }: SheetDataAccessBypassOption = {}) => {
       if (records.length === 0)
         return records;
 
@@ -485,13 +484,9 @@ class SheetDataCollection {
 
     /**
      * Adds one record (safer than adding accross a range for collision)
-     * @param {Object} record - record to add
+     * @param {T} record - record to add
      */
-    const addOne = (record, { bypassSchema = false } = {}) => {
-      //saves record data objects to the spreadsheet
-      if (!record)
-        return null;
-
+    const addOne = (record: T, { bypassSchema = false }: SheetDataAccessBypassOption = {}): T => {
       init();
 
       const recordToSave = !bypassSchema
@@ -506,14 +501,14 @@ class SheetDataCollection {
 
       //return objects to their from schema state
       //this seems like i should be doing this a different way....
-      return getFromSchemaRecords([recordToSave])[0];
+      return getFromSchemaRecords([recordToSave])[0] as T;
     };
 
     /**
      * adds the record models
      * @param {T[]} records - records to add to the sheet datasource
      */
-    const add = (records, { bypassSchema = false } = {}) => {
+    const add = (records: T[], { bypassSchema = false }: SheetDataAccessBypassOption = {}) => {
       //saves record data objects to the spreadsheet
       if (records.length === 0)
         return [];
@@ -548,7 +543,7 @@ class SheetDataCollection {
      * updates the record models
      * @param {T[]} records - records to update in the sheet datasource
      */
-    const update = (records, { bypassSchema = false } = {}) => {
+    const update = (records: T[], { bypassSchema = false }: SheetDataAccessBypassOption = {}) => {
       if (records.length === 0)
         return [];
 
@@ -575,16 +570,16 @@ class SheetDataCollection {
      * Patches the provided patch props onto existing models 
      * (allows for targeted updates, which could help with multi-users so that entire records arent saved, just the individual changes are applied)
      * @param {T[]} patches - list of patches to apply
-     * @param {Object} options 
+     * @param {SheetDataAccessBypassOption} options 
      */
-    const patch = (patches, { bypassSchema = false } = {}) => {
+    const patch = (patches: Partial<T>[], { bypassSchema = false }: SheetDataAccessBypassOption = {}) => {
       if (patches.length === 0)
         return [];
 
       init();
 
       const patchedRecords = patches.map(patch => {
-        const existing = find(patch._key);
+        const existing = find(String(patch._key || -1));
         if (!existing)
           throw new Error(`Could not patch record with key ${patch._key}. Key not found!`);
 
@@ -601,13 +596,13 @@ class SheetDataCollection {
     /**
      * deletes record objects to sheet datasource
      */
-    const del = (records) => {
+    const del = (records: Partial<T>[]) => {
       init();
 
       // find each record to remove...
       records.forEach(record => {
         const recordValues = cache.headerRow.map(header => record[header]);
-        const range = sheet.getRange(record._key, 1, 1, context.COLUMN_COUNT);
+        const range = sheet.getRange(Number(record._key), 1, 1, context.COLUMN_COUNT);
 
         //last second check to make sure 2d array and sheet are still in sync for this object
         if (String(range.getValues()[0][0]) !== String(recordValues[0]))
@@ -625,7 +620,7 @@ class SheetDataCollection {
      * @param {T[]} records - batch data to apply
      * @param {Object} [options] - options
      */
-    const batch = (records, { bypassSchema = false } = {}) => {
+    const batch = (records: T[], { bypassSchema = false }: SheetDataAccessBypassOption = {}) => {
       if (records.length === 0)
         return records;
 
@@ -670,13 +665,13 @@ class SheetDataCollection {
      * Only allows a single call of a transaction method (will error if one is called again)
      * @param {T | T[]} records - records to prelight validate
      */
-    const preflight = (records) => {
+    const preflight = (records: T | T[]) => {
       const arrayOfRecords = Array.isArray(records) ? records : [records];
       const recordsToSave = getRecordsToSave(arrayOfRecords);
       const bypassSchema = true;
 
       let transacted = false;
-      const transact = (fn) => {
+      const transact = <I>(fn: () => I): I => {
         if (transacted) throw new Error('Preflight transaction already complete!');
         const result = fn();
         transacted = true;
@@ -704,7 +699,7 @@ class SheetDataCollection {
     const sort = (column: keyof T, asc?: boolean) => {
       init();
       const headers = headerRow();
-      const index = headers.findIndex(column);
+      const index = headers.indexOf(column);
 
       if (index !== -1) {
         sheet.sort(index + 1, !!asc);
