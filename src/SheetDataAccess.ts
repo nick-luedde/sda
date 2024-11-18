@@ -127,10 +127,9 @@ class SheetDataAccess {
    * @param {number} index - index of the object within the data array
    * @param {string[]} headers - array of header names in the order of appearance in sheet
    */
-  static getRowAsObject<T>(row: any[], index: number, headers: (keyof T)[]) {
-    const obj = {
-      _key: index + SheetDataAccess.ROW_INDEX_OFFSET
-    } as T;
+  static getRowAsObject<T extends SheetDataAccessRecordObjectKey>(row: any[], index: number, headers: (keyof T)[]) {
+    const obj = {} as T;
+    obj._key = index + SheetDataAccess.ROW_INDEX_OFFSET;
 
     headers.forEach((header, index) => obj[header] = row[index]);
     return obj;
@@ -540,6 +539,15 @@ class SheetDataCollection {
     };
 
     /**
+     * updates the record model
+     * @param {T} record - record to update in the sheet datasource
+     */
+    const updateOne = (records: T, { bypassSchema = false }: SheetDataAccessBypassOption = {}): T => {
+      const [saved] = update([records], { bypassSchema });
+      return saved as T;
+    };
+
+    /**
      * updates the record models
      * @param {T[]} records - records to update in the sheet datasource
      */
@@ -797,6 +805,7 @@ class SheetDataCollection {
       upsert,
       addOne,
       add,
+      updateOne,
       update,
       patch,
       delete: del,

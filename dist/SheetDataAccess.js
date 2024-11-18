@@ -1,4 +1,3 @@
-"use strict";
 /**
  * Class for handling data access to app data google sheet
  * Expects each collection to have an id property that is treated as the unique identifier for that record
@@ -108,9 +107,8 @@ class SheetDataAccess {
      * @param {string[]} headers - array of header names in the order of appearance in sheet
      */
     static getRowAsObject(row, index, headers) {
-        const obj = {
-            _key: index + SheetDataAccess.ROW_INDEX_OFFSET
-        };
+        const obj = {};
+        obj._key = index + SheetDataAccess.ROW_INDEX_OFFSET;
         headers.forEach((header, index) => obj[header] = row[index]);
         return obj;
     }
@@ -439,6 +437,14 @@ class SheetDataCollection {
             return getFromSchemaRecords(recordsToSave);
         };
         /**
+         * updates the record model
+         * @param {T} record - record to update in the sheet datasource
+         */
+        const updateOne = (records, { bypassSchema = false } = {}) => {
+            const [saved] = update([records], { bypassSchema });
+            return saved;
+        };
+        /**
          * updates the record models
          * @param {T[]} records - records to update in the sheet datasource
          */
@@ -646,6 +652,7 @@ class SheetDataCollection {
             upsert,
             addOne,
             add,
+            updateOne,
             update,
             patch,
             delete: del,

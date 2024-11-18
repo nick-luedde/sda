@@ -3,8 +3,8 @@
     "target": "ESNext",
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
-    "strict": true,
-    "skipLibCheck": false,
+    // "strict": true,
+    "skipLibCheck": true,
     "outDir": "dist"
   },
   "include": ["src/**/*", "@types/**/*",]
