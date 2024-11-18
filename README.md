@@ -13,7 +13,7 @@ function getExampleTaskData() {
    * Assumes you have a Google Sheet with the following structure:
    * 
    * ____________________
-   * |       Task       |
+   * | Sheet name: Task |
    * |-------------------
    * | id | task | done |
    * |-------------------
@@ -23,8 +23,16 @@ function getExampleTaskData() {
 
   const tasks = ds.collections.Task.data();
 
-  console.log(tasks); // Logs task objects in shape [{ id: 'task-id', task: 'task details': done: true/false }]
+  console.log(tasks); 
+  // Logs task objects in shape [{ id: 'task-id', task: 'task details': done: true/false }]
+
+  const [taskOne] = tasks;
+  task.done = true;
+
+  // Saves the updated task back to the Sheet
+  const updated = ds.collections.Task.updateOne(task);
 }
 ```
+
 
 For more examples, [check out Examples.ts](src/Examples.ts)

@@ -2,14 +2,14 @@
  * Assumes you have a Google Sheet with the following structure:
  *
  * ___________________________________
- * |            Project              |
+ * |       Sheet name: Project       |
  * |----------------------------------
  * | id | name | priority | due_date |
  * |----------------------------------
  *
  *
  * _________________________________________________________
- * |                         Task                          |
+ * |                     Sheet name: Task                  |
  * |--------------------------------------------------------
  * | id | project_id | title | notes | done | last_updated |
  * |--------------------------------------------------------
