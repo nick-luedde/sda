@@ -186,7 +186,7 @@ class SheetDataCollection {
       context.ROW_COUNT = rowCount();
 
       if (!cache.data)
-        [cache.headerRow] = headerRow();
+        cache.headerRow = headerRow();
     };
 
     const rowCount = (): number => sheet.getLastRow();
@@ -492,8 +492,17 @@ class SheetDataCollection {
         ? getRecordsToSave([record])[0]
         : record;
 
+      const startingRowCount = rowCount();
+
       const row = cache.headerRow.map(header => recordToSave[header]);
       sheet.appendRow(row);
+      
+      const rng = sheet.getRange(startingRowCount, context.pkColumnIndex + 1, rowCount());
+      const finder = rng.createTextFinder(row[context.pkColumnIndex]);
+      const found = finder.findNext();
+      if (!found)
+        throw new Error('Something went wrong with the add operation!');
+      recordToSave._key = found.getRow();
 
       //clear cached data to force rebuild to account for changed/added records
       clearCached();
@@ -710,7 +719,8 @@ class SheetDataCollection {
       const index = headers.indexOf(column);
 
       if (index !== -1) {
-        sheet.sort(index + 1, !!asc);
+        const range = sheet.getRange(2, context.COLUMN_COUNT, rowCount());
+        range.sort({ column: index + 1, ascending: Boolean(asc) });
         clearCached();
       }
 

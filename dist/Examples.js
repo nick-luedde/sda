@@ -27,7 +27,7 @@ const getSheetDataSource = () => {
  */
 function example_fulltextsearch() {
     const ds = getSheetDataSource();
-    const projects = ds.collections.Project.fts({ q: 'TypeScript', matchCell: true });
+    const projects = ds.collections.Project.fts({ q: 'TypeScript' });
     console.log(projects);
 }
 /**
@@ -56,4 +56,74 @@ function example_update_data() {
     task.last_updated = new Date();
     const updated = ds.collections.Task.updateOne(task);
     console.log(updated);
+}
+/**
+ * Example of deleting a row
+ */
+function example_delete_row() {
+    const ds = getSheetDataSource();
+    const added = ds.collections.Task.addOne({
+        id: 'task-1000',
+        title: 'New to delete',
+        done: true,
+        last_updated: new Date(),
+        project_id: '',
+        notes: 'Some notes',
+    });
+    ds.collections.Task.delete([added]);
+}
+/**
+ * Example of wiping a Sheet
+ */
+function example_wipe() {
+    const ds = getSheetDataSource();
+    const projects = ds.collections.Project.data();
+    ds.collections.Project.wipe();
+    ds.collections.Project.add(projects);
+}
+/**
+ * Example of inspecting a Spreadsheet
+ */
+function example_inspect() {
+    const ds = getSheetDataSource();
+    const results = ds.inspect();
+    console.log(results);
+}
+/**
+ * Example of sorting the source sheet
+ * WARNING: This could cook other peoples cached data, setting _keys out of sync
+ */
+function example_sort() {
+    const ds = getSheetDataSource();
+    ds.collections.Task.sort('last_updated');
+    ds.collections.Task.sort('last_updated', true);
+}
+/**
+ * Example of enforcing uniqueness on a column value
+ */
+function example_enforce_unique() {
+    const ds = getSheetDataSource();
+    const taskWithUniqueId = {
+        id: 'task-unique-1000',
+        project_id: 'none',
+        title: 'Unique',
+        notes: '',
+        done: true,
+        last_updated: new Date()
+    };
+    ds.collections.Task.enforceUnique(taskWithUniqueId, 'id'); // No error
+    const taskWithNonUniqueId = {
+        id: 'task-001',
+        project_id: 'duplicate',
+        title: 'duplicate',
+        notes: 'duplicate',
+        done: false,
+        last_updated: new Date()
+    };
+    try {
+        ds.collections.Task.enforceUnique(taskWithNonUniqueId, 'id'); // Error
+    }
+    catch (err) {
+        console.error(err);
+    }
 }

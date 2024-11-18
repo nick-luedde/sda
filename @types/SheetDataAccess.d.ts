@@ -18,7 +18,7 @@ type SheetDataAccessBypassOption = {
 };
 
 type SheetDataAccessRecordObjectKey = {
-  _key: number | string;
+  _key?: number | string | null;
 };
 
 interface ISheetDataAccess<M> {
